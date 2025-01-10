@@ -8,12 +8,15 @@
 #include "platform/win32/volume_control.h"
 #include <direct.h>
 #else
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #endif
 
-#include "assets/smw_assets.h"
+#include "../assets/smw_assets.h"
 
 #include "snes/ppu.h"
 
@@ -29,7 +32,7 @@
 #include "switch_impl.h"
 #endif
 
-#include "assets/smw_assets.h"
+#include "../assets/smw_assets.h"
 
 typedef struct GamepadInfo {
   uint32 modifiers;
@@ -333,159 +336,15 @@ void MkDir(const char *s) {
 #endif
 }
 
-#undef main
-int main(int argc, char** argv) {
-#ifdef __SWITCH__
-  SwitchImpl_Init();
-#endif
-  argc--, argv++;
-  const char *config_file = NULL;
-  if (argc >= 2 && strcmp(argv[0], "--config") == 0) {
-    config_file = argv[1];
-    argc -= 2, argv += 2;
-  } else {
-    SwitchDirectory();
-  }
-  if (argc >= 1 && strcmp(argv[0], "--debug") == 0) {
-    g_debug_flag = true;
-    argc -= 1, argv += 1;
-  }
-  ParseConfigFile(config_file);
-
-  LoadAssets();
-
-  g_gamepad[0].joystick_id = g_gamepad[1].joystick_id = -1;
-  g_snes_width = (g_config.extended_aspect_ratio * 2 + 256);
-  g_snes_height = 224;// (g_config.extend_y ? 240 : 224);
-  g_ppu_render_flags = g_config.new_renderer * kPpuRenderFlags_NewRenderer |
-    //    g_config.enhanced_mode7 * kPpuRenderFlags_4x4Mode7 |
-    g_config.extend_y * kPpuRenderFlags_Height240 |
-    g_config.no_sprite_limits * kPpuRenderFlags_NoSpriteLimits;
-
-  if (g_config.fullscreen == 1)
-    g_win_flags ^= SDL_WINDOW_FULLSCREEN_DESKTOP;
-  else if (g_config.fullscreen == 2)
-    g_win_flags ^= SDL_WINDOW_FULLSCREEN;
-
-  // Window scale (1=100%, 2=200%, 3=300%, etc.)
-  g_current_window_scale = (g_config.window_scale == 0) ? 2 : IntMin(g_config.window_scale, kMaxWindowScale);
-
-  // audio_freq: Use common sampling rates (see user config file. values higher than 48000 are not supported.)
-  if (g_config.audio_freq < 11025 || g_config.audio_freq > 48000)
-    g_config.audio_freq = kDefaultFreq;
-
-  // Currently, the SPC/DSP implementation only supports up to stereo.
-  if (g_config.audio_channels < 1 || g_config.audio_channels > 2)
-    g_config.audio_channels = kDefaultChannels;
-
-  // audio_samples: power of 2
-  if (g_config.audio_samples <= 0 || ((g_config.audio_samples & (g_config.audio_samples - 1)) != 0))
-    g_config.audio_samples = kDefaultSamples;
-
-  SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-
-  // set up SDL
-  if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
-    printf("Failed to init SDL: %s\n", SDL_GetError());
-    return 1;
-  }
-
-  bool custom_size = g_config.window_width != 0 && g_config.window_height != 0;
-  int window_width = custom_size ? g_config.window_width : g_current_window_scale * g_snes_width;
-  int window_height = custom_size ? g_config.window_height : g_current_window_scale * g_snes_height;
-
-  if (g_config.output_method == kOutputMethod_OpenGL) {
-    g_win_flags |= SDL_WINDOW_OPENGL;
-    OpenGLRenderer_Create(&g_renderer_funcs);
-  } else {
-    g_renderer_funcs = kSdlRendererFuncs;
-  }
-
-  if (argv[0]) {
-    size_t size;
-    kRom = ReadWholeFile(argv[0], &size);
-    kRom_SIZE = (uint32)size;
-    if (!kRom)
-      goto error_reading;
-  }
-
-  Snes *snes = SnesInit(kRom, kRom_SIZE);
-  if (snes == NULL) {
-error_reading:;
-#ifdef __SWITCH__
-    ThrowMissingROM();
-#else
-    char buf[256];
-    snprintf(buf, sizeof(buf), "unable to load rom");
-    Die(buf);
-#endif
-    return 1;
-  }
-
-  SDL_Window *window = SDL_CreateWindow(kWindowTitle, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, g_win_flags);
-  if(window == NULL) {
-    printf("Failed to create window: %s\n", SDL_GetError());
-    return 1;
-  }
-  g_window = window;
-  SDL_SetWindowHitTest(window, HitTestCallback, NULL);
-
-  if (!g_renderer_funcs.Initialize(window))
-    return 1;
-
-  g_audio_mutex = SDL_CreateMutex();
-  if (!g_audio_mutex) Die("No mutex");
-
-  if (g_rtl_game_info->game_id == kGameID_SMB1 ||
-      g_rtl_game_info->game_id == kGameID_SMBLL)
-    g_spc_player = SmasSpcPlayer_Create();
-  else if (g_rtl_game_info->game_id == kGameID_SMW)
-    g_spc_player = SmwSpcPlayer_Create();
-
-  g_spc_player->initialize(g_spc_player);
-
-  bool enable_audio = true;
-  if (enable_audio) {
-    SDL_AudioSpec want = { 0 }, have;
-    want.freq = g_config.audio_freq;
-    want.format = AUDIO_S16;
-    want.channels = 2;
-    want.samples = g_config.audio_samples;
-    want.callback = &AudioCallback;
-    g_audio_device = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
-    if (g_audio_device == 0) {
-      printf("Failed to open audio device: %s\n", SDL_GetError());
-      return 1;
-    }
-    g_audio_channels = 2;
-    g_frames_per_block = (534 * have.freq) / 32000;
-    g_audiobuffer = (uint8 *)calloc(g_frames_per_block * have.channels * sizeof(int16), 1);
-  }
-
-  PpuBeginDrawing(g_snes->ppu, g_pixels, 256 * 4, 0);
-  PpuBeginDrawing(g_my_ppu, g_my_pixels, 256 * 4, 0);
-
-  if (g_config.save_playthrough)
-    MkDir("playthrough");
-  MkDir("saves");
-    
-  RtlReadSram();
-
-  for (int i = 0; i < SDL_NumJoysticks(); i++)
-    OpenOneGamepad(i);
-
-  if (g_config.autosave)
-    HandleCommand(kKeys_Load + 0, true);
-
-  bool running = true;
-  uint32 lastTick = SDL_GetTicks();
-  uint32 curTick = 0;
-  uint32 frameCtr = 0;
-  uint8 audiopaused = true;
-  bool has_bug_in_title = false;
-  GamepadInfo *gi;
-
-  while (running) {
+void GameLoop() {
+    bool running = true;
+    uint32 lastTick = SDL_GetTicks();
+    uint32 curTick = 0;
+    uint32 frameCtr = 0;
+    uint8 audiopaused = true;
+    bool has_bug_in_title = false;
+    GamepadInfo *gi;
+    while (running) {
     SDL_Event event;
 
     while (SDL_PollEvent(&event)) {
@@ -596,6 +455,154 @@ error_reading:;
       }
     }
   }
+}
+
+#undef main
+int main(int argc, char** argv) {
+#ifdef __SWITCH__
+  SwitchImpl_Init();
+#endif
+  argc--, argv++;
+  const char *config_file = NULL;
+  if (argc >= 2 && strcmp(argv[0], "--config") == 0) {
+    config_file = argv[1];
+    argc -= 2, argv += 2;
+  } else {
+    SwitchDirectory();
+  }
+  if (argc >= 1 && strcmp(argv[0], "--debug") == 0) {
+    g_debug_flag = true;
+    argc -= 1, argv += 1;
+  }
+  ParseConfigFile(config_file);
+
+  LoadAssets();
+
+  g_gamepad[0].joystick_id = g_gamepad[1].joystick_id = -1;
+  g_snes_width = (g_config.extended_aspect_ratio * 2 + 256);
+  g_snes_height = 224;// (g_config.extend_y ? 240 : 224);
+  g_ppu_render_flags = g_config.new_renderer * kPpuRenderFlags_NewRenderer |
+    //    g_config.enhanced_mode7 * kPpuRenderFlags_4x4Mode7 |
+    g_config.extend_y * kPpuRenderFlags_Height240 |
+    g_config.no_sprite_limits * kPpuRenderFlags_NoSpriteLimits;
+
+  if (g_config.fullscreen == 1)
+    g_win_flags ^= SDL_WINDOW_FULLSCREEN_DESKTOP;
+  else if (g_config.fullscreen == 2)
+    g_win_flags ^= SDL_WINDOW_FULLSCREEN;
+
+  // Window scale (1=100%, 2=200%, 3=300%, etc.)
+  g_current_window_scale = (g_config.window_scale == 0) ? 2 : IntMin(g_config.window_scale, kMaxWindowScale);
+
+  // audio_freq: Use common sampling rates (see user config file. values higher than 48000 are not supported.)
+  if (g_config.audio_freq < 11025 || g_config.audio_freq > 48000)
+    g_config.audio_freq = kDefaultFreq;
+
+  // Currently, the SPC/DSP implementation only supports up to stereo.
+  if (g_config.audio_channels < 1 || g_config.audio_channels > 2)
+    g_config.audio_channels = kDefaultChannels;
+
+  // audio_samples: power of 2
+  if (g_config.audio_samples <= 0 || ((g_config.audio_samples & (g_config.audio_samples - 1)) != 0))
+    g_config.audio_samples = kDefaultSamples;
+
+  SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+
+  // set up SDL
+  if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
+    printf("Failed to init SDL: %s\n", SDL_GetError());
+    return 1;
+  }
+
+  bool custom_size = g_config.window_width != 0 && g_config.window_height != 0;
+  int window_width = custom_size ? g_config.window_width : g_current_window_scale * g_snes_width;
+  int window_height = custom_size ? g_config.window_height : g_current_window_scale * g_snes_height;
+
+  if (g_config.output_method == kOutputMethod_OpenGL) {
+    g_win_flags |= SDL_WINDOW_OPENGL;
+    // OpenGLRenderer_Create(&g_renderer_funcs);
+  } else {
+    g_renderer_funcs = kSdlRendererFuncs;
+  }
+
+  if (argv[0]) {
+    size_t size;
+    kRom = ReadWholeFile(argv[0], &size);
+    kRom_SIZE = (uint32)size;
+    if (!kRom)
+      goto error_reading;
+  }
+
+  Snes *snes = SnesInit(kRom, kRom_SIZE);
+  if (snes == NULL) {
+error_reading:;
+#ifdef __SWITCH__
+    ThrowMissingROM();
+#else
+    char buf[256];
+    snprintf(buf, sizeof(buf), "unable to load rom");
+    Die(buf);
+#endif
+    return 1;
+  }
+  
+
+  SDL_Window *window = SDL_CreateWindow(kWindowTitle, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, g_win_flags);
+  if(window == NULL) {
+    printf("Failed to create window: %s\n", SDL_GetError());
+    return 1;
+  }
+  g_window = window;
+  SDL_SetWindowHitTest(window, HitTestCallback, NULL);
+
+  if (!g_renderer_funcs.Initialize(window))
+    return 1;
+
+  g_audio_mutex = SDL_CreateMutex();
+  if (!g_audio_mutex) Die("No mutex");
+
+  if (g_rtl_game_info->game_id == kGameID_SMB1 ||
+      g_rtl_game_info->game_id == kGameID_SMBLL)
+    g_spc_player = SmasSpcPlayer_Create();
+  else if (g_rtl_game_info->game_id == kGameID_SMW)
+    g_spc_player = SmwSpcPlayer_Create();
+
+  g_spc_player->initialize(g_spc_player);
+
+  bool enable_audio = true;
+  if (enable_audio) {
+    SDL_AudioSpec want = { 0 }, have;
+    want.freq = g_config.audio_freq;
+    want.format = AUDIO_S16;
+    want.channels = 2;
+    want.samples = g_config.audio_samples;
+    want.callback = &AudioCallback;
+    g_audio_device = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+    if (g_audio_device == 0) {
+      printf("Failed to open audio device: %s\n", SDL_GetError());
+      return 1;
+    }
+    g_audio_channels = 2;
+    g_frames_per_block = (534 * have.freq) / 32000;
+    g_audiobuffer = (uint8 *)calloc(g_frames_per_block * have.channels * sizeof(int16), 1);
+  }
+
+  PpuBeginDrawing(g_snes->ppu, g_pixels, 256 * 4, 0);
+  PpuBeginDrawing(g_my_ppu, g_my_pixels, 256 * 4, 0);
+
+  if (g_config.save_playthrough)
+    MkDir("playthrough");
+  MkDir("saves");
+    
+  RtlReadSram();
+
+  for (int i = 0; i < SDL_NumJoysticks(); i++)
+    OpenOneGamepad(i);
+
+  if (g_config.autosave)
+    HandleCommand(kKeys_Load + 0, true);
+
+  emscripten_set_main_loop(GameLoop, 60, 1);
 
   if (g_config.autosave)
     HandleCommand(kKeys_Save + 0, true);

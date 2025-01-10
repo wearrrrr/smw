@@ -2,7 +2,7 @@
 #include "funcs.h"
 #include "smw_rtl.h"
 #include "variables.h"
-#include "assets/smw_assets.h"
+#include "../assets/smw_assets.h"
 
 static FuncU8 *const kSpr0C5_BigBooBoss_BigBooBossPtrs[7] = {
     &Spr0C5_BigBooBoss_StoppedBeforeFadeIn,

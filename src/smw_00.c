@@ -2,7 +2,7 @@
 #include "funcs.h"
 #include "smw_rtl.h"
 #include "variables.h"
-#include "assets/smw_assets.h"
+#include "../assets/smw_assets.h"
 
 static FuncV *const kInitAndMainLoop_GameModePtrs[42] = {
     &GameMode00_LoadNintendoPresents,

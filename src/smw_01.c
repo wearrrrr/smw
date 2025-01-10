@@ -2,7 +2,7 @@
 #include "funcs.h"
 #include "smw_rtl.h"
 #include "variables.h"
-#include "assets/smw_assets.h"
+#include "../assets/smw_assets.h"
 
 void (*kUnk_18137[13])(uint8) = {
     &SprStatus00_EmptySlot,   &SprStatus01_Init,         &SprStatus02_Dead,

@@ -2,7 +2,7 @@
 #include "funcs.h"
 #include "smw_rtl.h"
 #include "variables.h"
-#include "assets/smw_assets.h"
+#include "../assets/smw_assets.h"
 
 void (*kUnk_ca1de[5])(void) = {
     &sub_CA1ED,

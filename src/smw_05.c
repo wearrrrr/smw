@@ -2,7 +2,7 @@
 #include "funcs.h"
 #include "smw_rtl.h"
 #include "variables.h"
-#include "assets/smw_assets.h"
+#include "../assets/smw_assets.h"
 #include "snes/snes.h"
 void (*kBufferScrollingTiles_Layer1_Main_PtrsLong058823[32])(void) = {
     &BufferScrollingTiles_Layer1,

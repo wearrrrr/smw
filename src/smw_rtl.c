@@ -3,7 +3,7 @@
 #include <time.h>
 #include "common_cpu_infra.h"
 #include "snes/snes.h"
-#include "src/funcs.h"
+#include "funcs.h"
 
 const uint8 *ptr_layer1_data;
 const uint8 *ptr_layer2_data;

@@ -3,7 +3,7 @@
 #include "snes/snes.h"
 #include "variables.h"
 #include "funcs.h"
-#include "assets/smw_assets.h"
+#include "../assets/smw_assets.h"
 
 extern bool g_custom_music;
 

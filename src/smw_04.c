@@ -2,7 +2,7 @@
 #include "funcs.h"
 #include "smw_rtl.h"
 #include "variables.h"
-#include "assets/smw_assets.h"
+#include "../assets/smw_assets.h"
 
 void (*kHandleCurrentOverworldProcess_PtrsLong04857D[13])(void) = {
     &OwProcess00_OverworldEntryInitialization,
