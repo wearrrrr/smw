@@ -32,8 +32,6 @@
 #include "switch_impl.h"
 #endif
 
-#include "../assets/smw_assets.h"
-
 typedef struct GamepadInfo {
   uint32 modifiers;
   SDL_JoystickID joystick_id;
@@ -56,7 +54,7 @@ static int RemapSdlButton(int button);
 static void HandleGamepadInput(GamepadInfo *gi, int button, bool pressed);
 static void HandleInput(int keyCode, int keyMod, bool pressed);
 static void HandleCommand(uint32 j, bool pressed);
-void OpenGLRenderer_Create(struct RendererFuncs *funcs);
+// void OpenGLRenderer_Create(struct RendererFuncs *funcs);
 
 bool g_debug_flag;
 bool g_want_dump_memmap_flags;
@@ -81,6 +79,10 @@ static const char kWindowTitle[] = "SMW";
 static uint32 g_win_flags = SDL_WINDOW_RESIZABLE;
 static SDL_Window *g_window;
 
+uint32 g_curTick = 0;
+uint32 g_frameCtr = 0;
+
+static bool g_running = true;
 static uint8 g_paused, g_turbo, g_replay_turbo = true, g_cursor = true;
 static uint8 g_current_window_scale;
 static uint32 g_input_state;
@@ -337,15 +339,10 @@ void MkDir(const char *s) {
 }
 
 void GameLoop() {
-    bool running = true;
-    uint32 lastTick = SDL_GetTicks();
-    uint32 curTick = 0;
-    uint32 frameCtr = 0;
-    uint8 audiopaused = true;
     bool has_bug_in_title = false;
     GamepadInfo *gi;
-    while (running) {
     SDL_Event event;
+    uint32 lastTick = SDL_GetTicks();
 
     while (SDL_PollEvent(&event)) {
       switch (event.type) {
@@ -393,21 +390,20 @@ void GameLoop() {
         HandleInput(event.key.keysym.sym, event.key.keysym.mod, false);
         break;
       case SDL_QUIT:
-        running = false;
+        g_running = false;
         break;
       }
     }
 
-    if (g_paused != audiopaused) {
-      audiopaused = g_paused;
+    if (g_paused != true) {
       if (g_audio_device)
-        SDL_PauseAudioDevice(g_audio_device, audiopaused);
+        SDL_PauseAudioDevice(g_audio_device, g_paused);
     }
 
-    if (g_paused) {
-      SDL_Delay(16);
-      continue;
-    }
+    // if (g_paused) {
+    //   SDL_Delay(16);
+    //   continue;
+    // }
 
     // Clear gamepad inputs when joypad directional inputs to avoid wonkiness
     if (g_input_state & 0xf0)
@@ -417,8 +413,8 @@ void GameLoop() {
     uint32 inputs = g_input_state | g_gamepad[0].axis_buttons | g_gamepad[1].axis_buttons << 12;
     uint8 is_replay = RtlRunFrame(inputs | GetActiveControllers());
 
-    frameCtr++;
-    g_snes->disableRender = (g_turbo ^ (is_replay & g_replay_turbo)) && (frameCtr & (g_turbo ? 0xf : 0x7f)) != 0;
+    g_frameCtr++;
+    g_snes->disableRender = (g_turbo ^ (is_replay & g_replay_turbo)) && (g_frameCtr & (g_turbo ? 0xf : 0x7f)) != 0;
 
     if (!g_snes->disableRender)
       DrawPpuFrameWithPerf();
@@ -436,25 +432,24 @@ void GameLoop() {
     }
 
     // if vsync isn't working, delay manually
-    curTick = SDL_GetTicks();
+    g_curTick = SDL_GetTicks();
 
     if (!g_snes->disableRender && !g_config.disable_frame_delay) {
       static const uint8 delays[3] = { 17, 17, 16 }; // 60 fps
-      lastTick += delays[frameCtr % 3];
+      lastTick += delays[g_frameCtr % 3];
 
-      if (lastTick > curTick) {
-        uint32 delta = lastTick - curTick;
+      if (lastTick > g_curTick) {
+        uint32 delta = lastTick - g_curTick;
         if (delta > 500) {
-          lastTick = curTick - 500;
+          lastTick = g_curTick - 500;
           delta = 500;
         }
         //        printf("Sleeping %d\n", delta);
         SDL_Delay(delta);
-      } else if (curTick - lastTick > 500) {
-        lastTick = curTick;
+      } else if (g_curTick - lastTick > 500) {
+        lastTick = g_curTick;
       }
     }
-  }
 }
 
 #undef main
@@ -545,7 +540,6 @@ error_reading:;
 #endif
     return 1;
   }
-  
 
   SDL_Window *window = SDL_CreateWindow(kWindowTitle, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, g_win_flags);
   if(window == NULL) {
@@ -602,7 +596,13 @@ error_reading:;
   if (g_config.autosave)
     HandleCommand(kKeys_Load + 0, true);
 
-  emscripten_set_main_loop(GameLoop, 60, 1);
+  while (g_running) {
+    #ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop(GameLoop, 0, 1);
+    #else
+    GameLoop();
+    #endif
+  }
 
   if (g_config.autosave)
     HandleCommand(kKeys_Save + 0, true);
