@@ -453,6 +453,7 @@ void GameLoop() {
 }
 
 #undef main
+
 int main(int argc, char** argv) {
 #ifdef __SWITCH__
   SwitchImpl_Init();

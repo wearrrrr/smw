@@ -11,7 +11,7 @@ if(CMAKE_C_COMPILER MATCHES "emcc")
   set(CMAKE_EXECUTABLE_SUFFIX .html)
 
   set(EM_USE_FLAGS "-sDISABLE_EXCEPTION_CATCHING=0")
-  set(EM_LINK_FLAGS "--preload-file smw_assets.dat --preload-file smw.ini")
+  set(EM_LINK_FLAGS "--preload-file smw_assets.dat --preload-file smw.ini -sINVOKE_RUN=0")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EM_USE_FLAGS} -sUSE_SDL=2 -sUSE_SDL_IMAGE=2 -O3")
 
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} ${EM_USE_FLAGS} ${EM_LINK_FLAGS}")

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SMW</title>
+    <script>
+        globalThis.ready = false;
+        run = () => {
+            if (globalThis.ready) {
+            real_run();
+            }
+            globalThis.ready = true;
+        }
+        var real_run = run;
+    </script>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: none;
+        background-color: #202020;
+      }
+
+      canvas {
+        background-color: #000;
+      }
+
+      .game-wrapper {
+        margin-top: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        height: 700px;
+        gap: 10px;
+      }
+
+       #start_button {
+        width: 150px;
+        height: 250px;
+        padding: 0.75rem 2rem;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: 250ms ease-in-out;
+      }
+      #start_button:disabled {
+        background-color: #555;
+        cursor: not-allowed;
+      }
+      #downloading {
+        color: #fff;
+        font-size: 1.5rem;
+        margin: 0;
+        transition: 250ms ease-in-out;
+      }
+    </style>
+    <script></script>
+  </head>
+  <body>
+    <div class="game-wrapper">
+        <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" width="768" height="672"></canvas>
+        <button id="start_button" disabled>Start Game</button>
+        <h2 id="downloading">Downloading...</h2>
+    </div>
+    <script>
+      Module = {
+        locateFile: function(path) {
+            return 'smw/' + path;
+        },
+        canvas: (() => {
+          var canvas = document.getElementById("canvas");
+          canvas.addEventListener("webglcontextlost", (ev) => {
+            alert("WebGL context lost. You will need to reload the page."),
+              ev.preventDefault();
+          });
+          return canvas;
+        })(),
+        onRuntimeInitialized: function() {
+            const downloading = document.getElementById("downloading");
+            downloading.innerHTML = "Downloaded!";
+            document.getElementById("start_button").addEventListener("click", () => {
+                start_button.disabled = true;
+                start_button.innerHTML = "Started";
+                downloading.style.opacity = 0;
+                Module._main();
+            });
+            start_button.disabled = false;
+        },
+      };
+    </script>
+    <script async src="smw/SMW.js"></script>
+  </body>
+</html>
